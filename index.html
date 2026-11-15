@@ -360,8 +360,9 @@
   // ── 상수 ───────────────────────────────────────────
   const TICK_MS = 200;            // 장면 분석 주기 (5fps)
   const SW = 48, SH = 64;         // 분석용 축소 해상도
-  const MAX_SIDE = 1568;          // 전송 이미지 최대 변 길이 (Claude 권장)
-  const JPEG_Q = 0.85;
+  const MAX_SIDE = 1568;          // 영상 장면을 보낼 때 최대 변 길이
+  const MAX_SIDE_PHOTO = 2576;    // 고화질 사진을 보낼 때 최대 변 길이 (최신 Claude 모델이 그대로 읽는 최대 크기)
+  const JPEG_Q = 0.85, JPEG_Q_PHOTO = 0.92;
   const COOLDOWN_MS = 1500;       // 자동 촬영 최소 간격
   const SENS = {                  // still: 정지 판정, move: 이동 판정, fresh: 새 장면 판정, need: 정지 유지 틱 수
     low:  {still: 3,   move: 14, fresh: 10, need: 8},
@@ -799,14 +800,16 @@
       if (!best || score > best.score) best = {rot, src, m, score};
       if (score > 0.8) break;
     }
-    if (!best || best.score < 0.5) return null;            // 사진과 화면이 안 맞으면(움직임 등) 영상 장면으로 대체
-    if (best.rot) S.photoRot = best.rot;
-    const {src, m} = best;
-    const scale = Math.min(1, MAX_SIDE / Math.max(m.w, m.h));
+    if (!best) return null;
+    const {src} = best;
+    let m = best.m, whole = false;
+    if (best.score >= 0.5) { if (best.rot) S.photoRot = best.rot; }
+    else { m = {x: 0, y: 0, w: src.width, h: src.height}; whole = true; }   // 위치를 확신 못 하면 사진 전체를 보냄 (영상으로 대체하지 않음)
+    const scale = Math.min(1, MAX_SIDE_PHOTO / Math.max(m.w, m.h));
     cap.width = Math.max(1, Math.round(m.w * scale)); cap.height = Math.max(1, Math.round(m.h * scale));
     cctx.drawImage(src, m.x, m.y, m.w, m.h, 0, 0, cap.width, cap.height);
-    const out = finishCapture();
-    out.src = '사진 ' + Math.round(Math.max(m.w, m.h)) + 'px';
+    const out = finishCapture(JPEG_Q_PHOTO);
+    out.src = (whole ? '사진 전체 ' : '사진 ') + cap.width + '×' + cap.height;
     return out;
   }
   function camInfo(){
@@ -899,11 +902,11 @@
       src = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
     }
     const w = src.width || src.naturalWidth, h = src.height || src.naturalHeight;
-    const scale = Math.min(1, MAX_SIDE / Math.max(w, h));
+    const scale = Math.min(1, MAX_SIDE_PHOTO / Math.max(w, h));
     cap.width = Math.max(1, Math.round(w * scale)); cap.height = Math.max(1, Math.round(h * scale));
     cctx.drawImage(src, 0, 0, cap.width, cap.height);
-    const out = finishCapture();
-    out.src = '카메라 앱 ' + Math.max(w, h) + 'px';
+    const out = finishCapture(JPEG_Q_PHOTO);
+    out.src = '카메라 앱 ' + cap.width + '×' + cap.height;
     return out;
   }
 
@@ -982,11 +985,11 @@
     cap.width = Math.max(1, Math.round(r.w * scale)); cap.height = Math.max(1, Math.round(r.h * scale));
     cctx.drawImage(video, r.x, r.y, r.w, r.h, 0, 0, cap.width, cap.height);
     const out = finishCapture();
-    out.src = '영상 ' + Math.round(Math.max(r.w, r.h)) + 'px';
+    out.src = '영상 ' + cap.width + '×' + cap.height;
     return out;
   }
-  function finishCapture(){
-    const image = cap.toDataURL('image/jpeg', JPEG_Q);
+  function finishCapture(q){
+    const image = cap.toDataURL('image/jpeg', q || JPEG_Q);
     th.width = 160; th.height = Math.max(1, Math.round(160 * cap.height / cap.width));
     tctx.drawImage(cap, 0, 0, th.width, th.height);
     return {image, thumb: th.toDataURL('image/jpeg', 0.7)};
@@ -1007,12 +1010,17 @@
     let shot = pre;
     if (!shot) {
       flash();
-      if (canPhoto()) {
+      const tryPhoto = canPhoto();
+      if (tryPhoto) {
         S.capturing = true; updateStatus();
         try { shot = await grabPhoto(); } catch { shot = null; }
         S.capturing = false;
       }
-      if (!shot) shot = grab();
+      if (!shot) {
+        shot = grab();
+        if (tryPhoto) toast('사진 촬영 실패 · 이번엔 영상 화면으로 풀었어요');
+        else if (S.photoMode && !S.mirror) toast('이 브라우저는 사진 촬영을 지원하지 않아요 · 고화질 버튼을 쓰세요');
+      }
     }
     const {image, thumb} = shot;
     S.lastSendAt = Date.now();
@@ -1193,7 +1201,7 @@
     document.querySelectorAll('#photoSeg button').forEach(b => b.classList.toggle('sel', (b.dataset.v === '1') === S.photoMode));
     $('#photoInfo').textContent = !S.imageCapture
       ? (S.mirror ? '전면 카메라는 영상 장면으로 찍습니다.' : '이 브라우저는 사진 촬영 기능을 지원하지 않아 영상 장면을 씁니다. 더 선명하게 하려면 고화질 버튼(카메라 앱)을 쓰세요.')
-      : '풀이할 때마다 폰 카메라로 실제 사진' + (S.photoCaps ? '(' + S.photoCaps + ')' : '') + '을 찍어 네모 영역만 잘라 보냅니다. 촬영에 0.5~1초 더 걸리고, 기기에 따라 촬영음이 날 수 있어요.';
+      : '영상은 문제를 찾는 데만 쓰고, 풀이할 때는 폰 카메라로 실제 사진' + (S.photoCaps ? '(' + S.photoCaps + ')' : '') + '을 찍어 네모 영역을 최대 2576px 고화질로 보냅니다. 촬영에 0.5~1초 더 걸리고, 기기에 따라 촬영음이 날 수 있어요.';
     const cur = S.track && S.track.getSettings ? S.track.getSettings().deviceId : null;
     $('#lensList').innerHTML = `<button data-id="" class="${!S.deviceId ? 'sel' : ''}">자동 (${S.facing === 'user' ? '전면' : '후면'} 기본)</button>` +
       (S.cams || []).map(c => `<button data-id="${esc(c.id)}" class="${S.deviceId && c.id === cur ? 'sel' : ''}">${esc(c.label)}</button>`).join('');
