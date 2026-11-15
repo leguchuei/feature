@@ -300,6 +300,7 @@
     <div class="field"><label>추가 요청 (모든 풀이에 함께 전달)</label>
       <textarea id="noteInput" placeholder="예) 풀이를 아주 자세히 / 정답만 짧게 / 3번 문제만 / 영어로 설명"></textarea></div>
     <div class="help" id="serverInfo"></div>
+    <div class="help">버전 2026.11.15-c</div>
   </div>
 </div>
 
@@ -331,6 +332,7 @@
     <li>정답은 음성으로도 읽어 줘요(🔊). 블루투스 이어폰을 연결해 두세요.</li>
   </ol>
   <button class="primary" id="startBtn">카메라 시작</button>
+  <div class="help" style="text-align:center;margin-top:12px">버전 2026.11.15-c</div>
 </div>
 
 <div id="viewer"><div class="vbar"><span id="viewerInfo"></span><button id="viewerClose" aria-label="닫기">✕</button></div>
@@ -782,11 +784,21 @@
   async function grabPhoto(){
     const vw = video.videoWidth, vh = video.videoHeight, r = guideRect();
     if (!vw || !vh || r.w < 8) return null;
+    const modes = (S.caps && S.caps.focusMode) || [];
+    if (modes.includes('single-shot')) {      // 찍기 직전 자동 초점 한 번 (흐린 사진 방지)
+      try {
+        await S.track.applyConstraints({advanced: [{focusMode: 'single-shot'}]});
+        await new Promise(r2 => setTimeout(r2, 700));
+      } catch {}
+    }
     const ref = grayOf(video, r.x, r.y, r.w, r.h);
     let blob = null;
     const take = opts => Promise.race([S.imageCapture.takePhoto(opts), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000))]);
     try { blob = await take(S.photoSize || undefined); }
     catch { try { blob = await take(); } catch { return null; } }
+    if (modes.includes('single-shot') && modes.includes('continuous')) {
+      S.track.applyConstraints({advanced: [{focusMode: 'continuous'}]}).catch(() => {});
+    }
     let bmp;
     try { bmp = await createImageBitmap(blob, {imageOrientation: 'from-image'}); } catch { return null; }
     const sameOrient = (bmp.width >= bmp.height) === (vw >= vh);
