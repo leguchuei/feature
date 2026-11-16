@@ -304,7 +304,7 @@
     <div class="field"><label>추가 요청 (모든 풀이에 함께 전달)</label>
       <textarea id="noteInput" placeholder="예) 풀이를 아주 자세히 / 정답만 짧게 / 3번 문제만 / 영어로 설명"></textarea></div>
     <div class="help" id="serverInfo"></div>
-    <div class="help">버전 2026.11.16-c</div>
+    <div class="help">버전 2026.11.16-d</div>
   </div>
 </div>
 
@@ -336,7 +336,7 @@
     <li>정답은 음성으로도 읽어 줘요(🔊). 블루투스 이어폰을 연결해 두세요.</li>
   </ol>
   <button class="primary" id="startBtn">카메라 시작</button>
-  <div class="help" style="text-align:center;margin-top:12px">버전 2026.11.16-c</div>
+  <div class="help" style="text-align:center;margin-top:12px">버전 2026.11.16-d</div>
 </div>
 
 <div id="viewer"><div class="vbar"><span id="viewerInfo"></span><button id="viewerClose" aria-label="닫기">✕</button></div>
@@ -501,6 +501,7 @@
       .replace(/\s+/g, ' ').trim();
   }
   function spokenText(it){
+    if (it.failed) return '문제를 못 찾았어요';
     const p = parseAnswer(it.text);
     if (p.read) return p.read;
     if (p.answerLine) return toSpeech(p.answerLine);
@@ -812,8 +813,8 @@
     let bmp;
     try { bmp = await createImageBitmap(blob, {imageOrientation: 'from-image'}); } catch { return null; }
     const sameOrient = (bmp.width >= bmp.height) === (vw >= vh);
-    let rots = sameOrient ? [0] : [90, 270];
-    if (!sameOrient && S.photoRot) rots = [S.photoRot, S.photoRot === 90 ? 270 : 90];
+    let rots = sameOrient ? [0, 180] : [90, 270];                       // 가로로 들거나 거꾸로 저장된 사진도 맞춤
+    if (S.photoRot !== null && rots.includes(S.photoRot)) rots = [S.photoRot, ...rots.filter(r => r !== S.photoRot)];
     let best = null;
     for (const rot of rots) {
       const src = rot ? rotated(bmp, rot) : bmp;
@@ -825,7 +826,7 @@
     if (!best) return null;
     const {src} = best;
     let m = best.m, whole = false;
-    if (best.score >= 0.5) { if (best.rot) S.photoRot = best.rot; }
+    if (best.score >= 0.5) S.photoRot = best.rot;
     else { m = {x: 0, y: 0, w: src.width, h: src.height}; whole = true; }   // 위치를 확신 못 하면 사진 전체를 보냄 (영상으로 대체하지 않음)
     const scale = Math.min(1, MAX_SIDE_PHOTO / Math.max(m.w, m.h));
     cap.width = Math.max(1, Math.round(m.w * scale)); cap.height = Math.max(1, Math.round(m.h * scale));
@@ -1105,7 +1106,7 @@
     try {
       await ask(S.model);
       const noProblem = item.text.trim().startsWith(token);
-      const gaveUp = !/⚠️/.test(item.text) && !parseAnswer(item.text).answerLine && (!noProblem || mode !== 'auto');
+      const gaveUp = !/⚠️/.test(item.text) && !parseAnswer(item.text).answerLine && (!noProblem || mode !== 'auto' || S.autoKind === 'interval');
       // 정답을 못 내고 포기했으면 → 정밀(Opus) 모델로 한 번 더 끝까지
       if (gaveUp && S.model !== 'precise' && S.cfg && S.cfg.models.some(m => m.key === 'precise')) {
         item.text = ''; item.model = 'precise'; item.retried = true; item.spoken = false;
@@ -1117,9 +1118,10 @@
       if (!item.text.trim()) item.text = '⚠️ 답을 받지 못했어요. 다시 시도해 주세요.';
       item.done = true;
       if (item.text.trim().startsWith(token)) {
-        if (mode === 'auto') { toast('문제가 보이지 않아요'); if (!quiet) cue('문제를 못 찾았어요'); return; }
-        item.text = '문제를 찾지 못했어요. 문제가 네모 안에 크고 선명하게 들어오도록 다시 비춰 주세요.';
+        if (mode === 'auto' && !quiet) { toast('문제가 보이지 않아요'); cue('문제를 못 찾았어요'); item.failed = true; return; }
+        item.text = '문제를 찾지 못했어요. 풀이 창 왼쪽 위 사진을 눌러 어떤 사진이 갔는지 확인해 보세요.';
       }
+      if (!/⚠️/.test(item.text) && !parseAnswer(item.text).answerLine) item.failed = true;
       if (!job.shown) reveal();
       if (S.viewing === item) scheduleRender();
       maybeSpeak(item);
@@ -1139,6 +1141,11 @@
       if (S.viewing === item) scheduleRender();
       if (item.done && job.shown) saveHistory();
       S.nextShotAt = Date.now() + S.intervalSec * 1000;    // 풀이가 끝난 뒤부터 다시 N초 세기
+      if (mode === 'auto' && item.done) {
+        // 실패한 화면은 한 번 더 찍어 보고, 그래도 안 되면 화면이 바뀔 때까지 기다림 (요금 폭주 방지)
+        if (item.failed && !S.failRetried) { S.failRetried = true; S.lastSent = null; S.armed = true; }
+        else S.failRetried = false;
+      }
       updateStatus();
     }
   }
