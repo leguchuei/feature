@@ -292,6 +292,10 @@
     <div class="field"><label>렌즈 선택</label>
       <div class="lens" id="lensList"></div>
       <div class="help">가까이 댔을 때 초점이 안 맞으면 다른 렌즈를 골라 보세요. (아이폰 Pro는 'Dual Wide'·'Triple' 카메라가 근접 초점에 유리할 수 있어요)</div></div>
+    <div class="field"><label>자동 촬영 방식</label>
+      <div class="seg" id="kindSeg"><button data-v="interval">시간 간격</button><button data-v="scene">장면 감지</button></div>
+      <div class="seg" id="secSeg" style="margin-top:8px"><button data-v="3">3초마다</button><button data-v="5">5초마다</button><button data-v="10">10초마다</button></div>
+      <div class="help">시간 간격: 정해진 초마다 사진을 찍어 정답만 말해 줘요. 화면이 그대로면(같은 문제) 건너뛰어 요금이 나가지 않아요. 장면 감지: 카메라를 새 문제에 대고 멈추면 찍어요.</div></div>
     <div class="field"><label>자동 인식 감도</label>
       <div class="seg" id="sensSeg">
         <button data-v="low">낮음</button><button data-v="mid">보통</button><button data-v="high">높음</button>
@@ -300,7 +304,7 @@
     <div class="field"><label>추가 요청 (모든 풀이에 함께 전달)</label>
       <textarea id="noteInput" placeholder="예) 풀이를 아주 자세히 / 정답만 짧게 / 3번 문제만 / 영어로 설명"></textarea></div>
     <div class="help" id="serverInfo"></div>
-    <div class="help">버전 2026.11.16-b</div>
+    <div class="help">버전 2026.11.16-c</div>
   </div>
 </div>
 
@@ -325,14 +329,14 @@
   </div>
   <ol>
     <li>문제가 화면의 네모 안에 들어오게 비춥니다.</li>
-    <li>1초쯤 가만히 들고 있으면 자동으로 인식해 풀이가 올라옵니다.</li>
+    <li>자동 모드는 5초마다 사진을 찍어 정답만 말해 줘요. 화면이 그대로면 다시 찍지 않아요.</li>
     <li>다음 문제로 옮기면 또 자동으로 풉니다. 가운데 버튼은 즉시 풀기.</li>
     <li>글자가 작으면 두 손가락으로 벌려 확대, 흐리면 화면을 탭해 초점을 맞추세요.</li>
     <li>더 선명하게 찍고 싶으면 왼쪽 '고화질' 버튼 → 카메라 앱으로 찍어서 풉니다.</li>
     <li>정답은 음성으로도 읽어 줘요(🔊). 블루투스 이어폰을 연결해 두세요.</li>
   </ol>
   <button class="primary" id="startBtn">카메라 시작</button>
-  <div class="help" style="text-align:center;margin-top:12px">버전 2026.11.16-b</div>
+  <div class="help" style="text-align:center;margin-top:12px">버전 2026.11.16-c</div>
 </div>
 
 <div id="viewer"><div class="vbar"><span id="viewerInfo"></span><button id="viewerClose" aria-label="닫기">✕</button></div>
@@ -385,6 +389,7 @@
     zoom: 1, zoomMin: 1, zoomMax: 4, hwZoom: false, mirror: false, caps: {}, cams: [], needRestart: false, focusTimer: 0,
     quality: store.get('quality', 'max'), deviceId: store.get('deviceId', null),
     style: store.get('style', 'answer'), voice: store.get('voice', 'normal'),
+    autoKind: store.get('autoKind', 'interval'), intervalSec: store.get('intervalSec', 5), nextShotAt: 0, skipAt: 0,
     backend: null, apiKey: store.get('apiKey', ''),
     photoMode: store.get('photoMode', true), imageCapture: null, photoCaps: '', photoSize: null, photoRot: null, capturing: false,
   };
@@ -422,6 +427,10 @@
     if (busy) return setStatus(S.busy.item.retried ? '정밀 모델로 다시 푸는 중…' : S.busy.shown ? '풀이 중…' : '문제 인식 중…', 'busy');
     if (!S.auto) return setStatus('수동 모드', '');
     if (S.sheet === 'full') return setStatus('풀이 보는 중', '');
+    if (S.autoKind === 'interval') {
+      if (Date.now() - S.skipAt < 1500) return setStatus('같은 화면 · 바뀌면 촬영', 'ok');
+      return setStatus(S.intervalSec + '초마다 촬영 · ' + Math.ceil((S.remain || 0) / 1000) + '초 후', 'ok');
+    }
     if (S.progress > 0) return setStatus('그대로 잠깐만…', 'ok');
     return setStatus('자동 인식 중', 'ok');
   }
@@ -963,7 +972,7 @@
     const std = Math.sqrt(vs / g.length);
     if (S.rebase) {   // 같은 장면을 새 영역으로 다시 본 것이므로 '새 문제'로 취급하지 않음
       S.rebase = false; S.prev = g; S.still = 0;
-      if (!S.armed && S.lastSent) S.lastSent = g;
+      if ((!S.armed || S.autoKind === 'interval') && S.lastSent) S.lastSent = g;
       setRing(0); updateStatus(); return;
     }
     const motion = S.prev ? meanDiff(g, S.prev) : 99;
@@ -975,6 +984,22 @@
 
     let progress = 0;
     const canAuto = S.auto && !S.busy && !S.capturing && S.sheet !== 'full' && !panelsOpen() && !document.hidden && !$('#viewer').classList.contains('open');
+    if (S.autoKind === 'interval') {     // 시간 간격 모드: N초마다 사진 → 정답 (같은 화면이면 건너뜀)
+      const now = Date.now(), ms = S.intervalSec * 1000;
+      if (!canAuto) { S.nextShotAt = 0; setRing(0); updateStatus(); return; }
+      if (!S.nextShotAt) S.nextShotAt = now + ms;
+      const remain = S.nextShotAt - now;
+      S.remain = Math.max(0, remain);
+      progress = Math.min(1, 1 - S.remain / ms);
+      if (remain <= 0) {
+        S.nextShotAt = now + ms;
+        const fresh = !S.lastSent || meanDiff(g, S.lastSent) > P.fresh;   // 지난번 찍은 화면과 다른가
+        const visible = mean > 25 && std > 6;
+        if (fresh && visible) { S.lastSent = g; progress = 0; shoot('auto'); }
+        else S.skipAt = now;                                              // 같은 문제라 건너뜀
+      }
+      setRing(progress); updateStatus(); return;
+    }
     if (canAuto && S.armed) {
       progress = Math.min(1, S.still / P.need);
       if (S.still >= P.need) {
@@ -1037,7 +1062,8 @@
     if (S.capturing) return;
     if (S.busy) { if (mode !== 'auto') S.busy.ctl.abort(); else return; }
     let shot = pre;
-    cue('푸는 중');
+    const quiet = mode === 'auto' && S.autoKind === 'interval';   // 시간 간격 모드는 정답만 말함
+    if (!quiet) cue('푸는 중');
     if (!shot) {
       flash();
       const tryPhoto = canPhoto();
@@ -1084,14 +1110,14 @@
       if (gaveUp && S.model !== 'precise' && S.cfg && S.cfg.models.some(m => m.key === 'precise')) {
         item.text = ''; item.model = 'precise'; item.retried = true; item.spoken = false;
         if (job.shown && S.viewing === item) scheduleRender();
-        cue('다시 정밀하게 푸는 중');
+        if (!quiet) cue('다시 정밀하게 푸는 중');
         toast('정밀 모델로 다시 푸는 중…');
         await ask('precise');
       }
       if (!item.text.trim()) item.text = '⚠️ 답을 받지 못했어요. 다시 시도해 주세요.';
       item.done = true;
       if (item.text.trim().startsWith(token)) {
-        if (mode === 'auto') { toast('문제가 보이지 않아요'); cue('문제를 못 찾았어요'); return; }
+        if (mode === 'auto') { toast('문제가 보이지 않아요'); if (!quiet) cue('문제를 못 찾았어요'); return; }
         item.text = '문제를 찾지 못했어요. 문제가 네모 안에 크고 선명하게 들어오도록 다시 비춰 주세요.';
       }
       if (!job.shown) reveal();
@@ -1112,6 +1138,7 @@
       if (S.busy === job) S.busy = null;
       if (S.viewing === item) scheduleRender();
       if (item.done && job.shown) saveHistory();
+      S.nextShotAt = Date.now() + S.intervalSec * 1000;    // 풀이가 끝난 뒤부터 다시 N초 세기
       updateStatus();
     }
   }
@@ -1235,6 +1262,9 @@
       `<button data-v="${esc(m.key)}" class="${m.key === S.model ? 'sel' : ''}">${esc(m.label)}</button>`).join('');
     document.querySelectorAll('#sensSeg button').forEach(b => b.classList.toggle('sel', b.dataset.v === S.sens));
     document.querySelectorAll('#styleSeg button').forEach(b => b.classList.toggle('sel', b.dataset.v === S.style));
+    document.querySelectorAll('#kindSeg button').forEach(b => b.classList.toggle('sel', b.dataset.v === S.autoKind));
+    document.querySelectorAll('#secSeg button').forEach(b => b.classList.toggle('sel', +b.dataset.v === S.intervalSec));
+    $('#secSeg').hidden = S.autoKind !== 'interval';
     document.querySelectorAll('#voiceSeg button').forEach(b => b.classList.toggle('sel', b.dataset.v === S.voice));
     $('#voiceSeg').closest('.field').hidden = !TTS.ok;
     document.querySelectorAll('#qualSeg button').forEach(b => b.classList.toggle('sel', b.dataset.v === S.quality));
@@ -1255,6 +1285,14 @@
       : c.demo ? '현재 PC 서버가 데모 모드입니다 (실제 풀이 대신 예시 답안).'
       : c.hasKey ? 'PC 서버 연결됨 · API 키 설정됨' : 'PC 서버 연결됨 · ⚠️ API 키가 없습니다 (PC에서 reset_key.bat)';
   }
+  $('#kindSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S.autoKind = b.dataset.v; store.set('autoKind', S.autoKind); S.nextShotAt = 0; S.armed = true; renderSettings();
+  });
+  $('#secSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S.intervalSec = +b.dataset.v; store.set('intervalSec', S.intervalSec); S.nextShotAt = 0; renderSettings();
+  });
   $('#styleSeg').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     S.style = b.dataset.v; store.set('style', S.style);
