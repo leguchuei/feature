@@ -28,13 +28,10 @@
   body.answer-mode.peek{--sheet-h:30dvh}
 
   /* 카메라 */
-  #video{position:fixed; inset:0; width:100%; height:100%; object-fit:cover; background:#000; touch-action:none}
+  #video{position:fixed; inset:0; width:100%; height:100%; object-fit:contain; background:#000; touch-action:none}
 
   /* 촬영 영역 가이드 */
-  #guide{position:fixed; left:4%; right:4%; top:var(--top);
-    bottom:calc(var(--sheet-h) + var(--ctrl-h) + env(safe-area-inset-bottom));
-    border-radius:18px; box-shadow:0 0 0 100vmax rgba(0,0,0,.38); pointer-events:none;
-    transition:bottom .28s ease}
+  #guide{position:fixed; left:0; top:0; width:0; height:0; border-radius:14px; pointer-events:none}
   #guide i{position:absolute; width:28px; height:28px; border:3px solid rgba(255,255,255,.85); transition:border-color .2s}
   #guide i:nth-child(1){left:-2px; top:-2px; border-right:0; border-bottom:0; border-top-left-radius:18px}
   #guide i:nth-child(2){right:-2px; top:-2px; border-left:0; border-bottom:0; border-top-right-radius:18px}
@@ -211,7 +208,7 @@
 <body>
 <video id="video" playsinline muted autoplay></video>
 
-<div id="guide"><i></i><i></i><i></i><i></i><div class="flash"></div><div class="hint">네모 안에 문제 하나 · 두 손가락으로 확대</div></div>
+<div id="guide"><i></i><i></i><i></i><i></i><div class="flash"></div><div class="hint">테두리 안 화면 전체가 사진으로 가요 · 두 손가락으로 확대</div></div>
 
 <header id="top">
   <div class="pill" id="status"><span class="dot"></span><span id="statusText">카메라 준비 중</span></div>
@@ -280,7 +277,7 @@
       <div class="seg" id="voiceSeg"><button data-v="off">끄기</button><button data-v="normal">보통 속도</button><button data-v="fast">빠르게</button></div>
       <div class="help">블루투스 이어폰을 연결하면 이어폰으로 들려요. 소리가 안 나면 미디어 볼륨, 그리고 폰 설정의 '텍스트 음성 변환(TTS)'에 한국어 음성이 있는지 확인하세요.</div></div>
     <div class="field"><label>풀이 모델</label><div class="seg" id="modelSeg"></div>
-      <div class="help">빠름은 응답이 빠르고 저렴, 정밀은 어려운 문제에 강합니다.</div></div>
+      <div class="help">실제 기출 사진 시험: 정확(Opus) 12번 중 12번 정답·평균 5초 / 보통(Sonnet) 12번 중 6번·2초. 정확을 추천해요.</div></div>
     <div class="field"><label>카메라 화질</label>
       <div class="seg" id="qualSeg"><button data-v="max">최고 (기기 최대)</button><button data-v="normal">보통 (1080p)</button></div>
       <div class="help" id="camInfo"></div>
@@ -304,7 +301,7 @@
     <div class="field"><label>추가 요청 (모든 풀이에 함께 전달)</label>
       <textarea id="noteInput" placeholder="예) 풀이를 아주 자세히 / 정답만 짧게 / 3번 문제만 / 영어로 설명"></textarea></div>
     <div class="help" id="serverInfo"></div>
-    <div class="help">버전 2026.11.16-d</div>
+    <div class="help">버전 2026.11.16-f</div>
   </div>
 </div>
 
@@ -336,7 +333,7 @@
     <li>정답은 음성으로도 읽어 줘요(🔊). 블루투스 이어폰을 연결해 두세요.</li>
   </ol>
   <button class="primary" id="startBtn">카메라 시작</button>
-  <div class="help" style="text-align:center;margin-top:12px">버전 2026.11.16-d</div>
+  <div class="help" style="text-align:center;margin-top:12px">버전 2026.11.16-f</div>
 </div>
 
 <div id="viewer"><div class="vbar"><span id="viewerInfo"></span><button id="viewerClose" aria-label="닫기">✕</button></div>
@@ -355,9 +352,10 @@
   // ── 휴대폰 단독 모드용 설정 (PC 서버가 없을 때 사용 · app.py의 설정과 같은 내용) ──
   /*DIRECT-CONFIG-START*/
   const DIRECT = {
-    models: [{"key": "fast", "id": "claude-haiku-5-5", "label": "빠름 · Haiku"}, {"key": "balanced", "id": "claude-sonnet-5-5", "label": "균형 · Sonnet"}, {"key": "precise", "id": "claude-opus-5-5", "label": "정밀 · Opus"}],
-    default: 'balanced',
-    maxTokens: {"full": 4096, "answer": 300},
+    models: [{"key": "fast", "id": "claude-haiku-5-5", "label": "빠름 · Haiku"}, {"key": "balanced", "id": "claude-sonnet-5-5", "label": "보통 · Sonnet"}, {"key": "precise", "id": "claude-opus-5-5", "label": "정확 · Opus (추천)"}],
+    default: 'precise',
+    maxTokens: {"full": 8000, "answer": 2000},
+    thinking: {"thinking": {"type": "adaptive"}, "output_config": {"effort": "low"}},
     noProblemToken: '[[NO_PROBLEM]]',
     prompts: {"full": "당신은 휴대폰 카메라로 비춘 문제를 실시간으로 풀어 주는 1:1 튜터입니다.\n사용자는 혼자 공부하며 이어폰으로 답을 기다리고 있으므로, 정확하되 간결하게 답합니다.\n\n[문제 고르기]\n- 이미지에서 풀 수 있는 문제(수학·과학·어학·무역·법령·자격증·코딩·논리 등 모든 과목)를 찾습니다.\n- 여러 문제가 보이면 화면 중앙에 가장 가깝고 가장 온전히 보이는 문제 하나만 풉니다.\n  단, 사용자의 추가 요청이 있으면 그 요청을 따릅니다(예: \"3번만\", \"전부\").\n\n[문제 읽기 - 절대 포기하지 않기]\n- 사진은 노트북·모니터 화면이나 종이를 휴대폰으로 비스듬히 찍은 것이 많아서 기울어짐, 원근 왜곡,\n  물결무늬(모아레), 빛 반사, 흐림, 큰 워터마크가 흔합니다. 이것은 정상적인 입력입니다.\n- 이런 왜곡이 있어도 \"읽을 수 없다\", \"사진이 흐리다\"며 포기하지 않습니다. 보이는 글자 조각,\n  문장 구조, 문항 번호, 과목 지식(용어·법령·공식·정형화된 기출 문장)을 이용해 문제와 보기를 최대한 복원하고 끝까지 풉니다.\n- 일부를 추정했다면 정답 줄 끝에 \"(일부 글자 추정)\"을 붙입니다. 추정이 많아도 가장 가능성이 높은 답을 반드시 하나 고릅니다.\n- 문제 일부가 잘려 있어도 보이는 정보로 풀 수 있으면 풀고, 가정한 부분을 밝힙니다.\n\n[문제가 없을 때]\n- 자동 모드에서 문제처럼 보이는 글이 전혀 없을 때(빈 책상, 사람, 사물만 보일 때)만\n  다른 말 없이 정확히 [[NO_PROBLEM]] 만 출력합니다. 문제처럼 보이는 글이 조금이라도 있으면 풉니다.\n- 수동 모드는 사용자가 일부러 찍은 것이므로 [[NO_PROBLEM]] 을 쓰지 않습니다. 문제처럼 보이는 부분이 있으면 무조건 풀고,\n  글자가 정말 하나도 없을 때만 무엇이 문제인지 한 줄로 안내합니다.\n\n[출력 형식 - Markdown]\n첫째 줄: **정답: …**  (객관식이면 번호와 보기 내용, 주관식이면 최종 값과 단위)\n둘째 줄: [읽기] …\n### 문제 인식\n- 인식한 문제를 한두 줄로 요약 (사용자가 인식 오류를 바로 확인할 수 있게)\n### 풀이\n- 단계별로 번호를 매겨 간결하게. 핵심 계산은 생략하지 않습니다.\n### 핵심 개념\n- 한두 줄 (오답 노트용)\n\n[읽기] 줄 규칙: 정답을 이어폰으로 듣기 좋은 자연스러운 한국어 한 문장. 기호·수식·LaTeX·마크다운 없이 소리 나는 대로 씁니다.\n  (예: \"[읽기] 정답은 3번, 엑스는 3입니다.\" / \"[읽기] 정답은 2번, 텀입니다.\" / \"[읽기] 정답은 루트 2 분의 1입니다.\")\n\n[규칙]\n- 한국어로 답합니다. 영어 지문이면 필요한 영어 표현은 원문 그대로 인용합니다.\n- 수식은 LaTeX로 씁니다: 인라인은 $...$, 별도 줄은 $$...$$. ([읽기] 줄은 제외)\n- 확신이 낮으면 정답 줄 끝에 \"(확신 낮음: 이유)\"를 붙입니다. 모르는 것을 지어내지 않습니다.\n", "answer": "당신은 휴대폰 카메라로 비춘 문제를 실시간으로 풀어 주는 1:1 튜터입니다.\n사용자는 혼자 공부하며 이어폰으로 답을 기다리고 있으므로, 정확하되 간결하게 답합니다.\n\n[문제 고르기]\n- 이미지에서 풀 수 있는 문제(수학·과학·어학·무역·법령·자격증·코딩·논리 등 모든 과목)를 찾습니다.\n- 여러 문제가 보이면 화면 중앙에 가장 가깝고 가장 온전히 보이는 문제 하나만 풉니다.\n  단, 사용자의 추가 요청이 있으면 그 요청을 따릅니다(예: \"3번만\", \"전부\").\n\n[문제 읽기 - 절대 포기하지 않기]\n- 사진은 노트북·모니터 화면이나 종이를 휴대폰으로 비스듬히 찍은 것이 많아서 기울어짐, 원근 왜곡,\n  물결무늬(모아레), 빛 반사, 흐림, 큰 워터마크가 흔합니다. 이것은 정상적인 입력입니다.\n- 이런 왜곡이 있어도 \"읽을 수 없다\", \"사진이 흐리다\"며 포기하지 않습니다. 보이는 글자 조각,\n  문장 구조, 문항 번호, 과목 지식(용어·법령·공식·정형화된 기출 문장)을 이용해 문제와 보기를 최대한 복원하고 끝까지 풉니다.\n- 일부를 추정했다면 정답 줄 끝에 \"(일부 글자 추정)\"을 붙입니다. 추정이 많아도 가장 가능성이 높은 답을 반드시 하나 고릅니다.\n- 문제 일부가 잘려 있어도 보이는 정보로 풀 수 있으면 풀고, 가정한 부분을 밝힙니다.\n\n[문제가 없을 때]\n- 자동 모드에서 문제처럼 보이는 글이 전혀 없을 때(빈 책상, 사람, 사물만 보일 때)만\n  다른 말 없이 정확히 [[NO_PROBLEM]] 만 출력합니다. 문제처럼 보이는 글이 조금이라도 있으면 풉니다.\n- 수동 모드는 사용자가 일부러 찍은 것이므로 [[NO_PROBLEM]] 을 쓰지 않습니다. 문제처럼 보이는 부분이 있으면 무조건 풀고,\n  글자가 정말 하나도 없을 때만 무엇이 문제인지 한 줄로 안내합니다.\n\n[출력 형식 - 정답만 · 속도 최우선]\n- 설명·근거·메모·문제 요약·인사 없이 정답만 바로 씁니다. 첫 글자부터 정답 줄입니다.\n- 객관식: **정답: ③**  (보기 번호만)\n- 주관식: **정답: 12 m/s** 를 쓰고, 다음 줄에 [읽기] 소리 내어 읽기 좋은 한 문장 (예: [읽기] 정답은 초속 12미터입니다.)\n- 확신이 낮아도 가장 가능성이 높은 답 하나만 씁니다. 다른 말은 덧붙이지 않습니다.\n"},
   };
@@ -497,7 +495,7 @@
     return String(line || '').replace(/[①-⑩]/g, c => (circ.indexOf(c) + 1) + '번 ')
       .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '$2 분의 $1').replace(/\\sqrt\{([^}]*)\}/g, '루트 $1')
       .replace(/\^2/g, ' 제곱').replace(/\\(times|cdot)/g, ' 곱하기 ').replace(/\\pi/g, '파이')
-      .replace(/\\[a-zA-Z]+/g, ' ').replace(/[*_#>`$\\{}]/g, '').replace(/정답\s*[:：]/, '정답은 ')
+      .replace(/\\[a-zA-Z]+/g, ' ').replace(/[*_#>`$\\{}]/g, '').replace(/\([^)]*\)/g, '').replace(/정답\s*[:：]/, '정답은 ')
       .replace(/\s+/g, ' ').trim();
   }
   function spokenText(it){
@@ -520,7 +518,7 @@
     } else if (it.style === 'answer') {
       const others = p.rest.replace(p.answerLine || '\u0000', '').trim();
       answer.innerHTML = (p.answerLine
-          ? '<div class="answer-big">' + renderMd(p.answerLine.replace(/^\s*\*\*|\*\*\s*$/g, '')) + '</div>' + (p.read ? '<div class="say">🔊 ' + esc(p.read) + '</div>' : '')
+          ? '<div class="answer-big">' + renderMd(p.answerLine.trim()) + '</div>' + (p.read ? '<div class="say">🔊 ' + esc(p.read) + '</div>' : '')
           : (it.done ? '' : '<div class="thinking"><span></span><span></span><span></span>정답 계산 중…</div>'))
         + (others ? renderMd(others) : '')
         + (p.memo.length ? '<details class="memo"' + (S.memoOpen ? ' open' : '') + '><summary>근거 보기</summary><div>' + esc(p.memo.join('\n')) + '</div></details>' : '')
@@ -889,7 +887,7 @@
     if (!S.track || !supported.pointsOfInterest) return;
     const vw = video.videoWidth, vh = video.videoHeight, r = video.getBoundingClientRect();
     if (!vw || !vh) return;
-    const scale = Math.max(r.width / vw, r.height / vh);
+    const scale = Math.min(r.width / vw, r.height / vh);
     const offX = r.left + (r.width - vw * scale) / 2, offY = r.top + (r.height - vh * scale) / 2;
     let x = (e.clientX - offX) / scale / vw, y = (e.clientY - offY) / scale / vh;
     if (S.mirror) x = 1 - x;
@@ -936,15 +934,24 @@
   // 화면에 보이는 '네모 가이드' 영역을 실제 영상 좌표로 변환
   function guideRect(){
     const vw = video.videoWidth, vh = video.videoHeight;
-    const vr = video.getBoundingClientRect(), gr = guide.getBoundingClientRect();
-    if (!vw || !vh || !vr.width || !gr.width) return {x: 0, y: 0, w: vw, h: vh};
-    const scale = Math.max(vr.width / vw, vr.height / vh);       // object-fit: cover
-    const offX = vr.left + (vr.width - vw * scale) / 2, offY = vr.top + (vr.height - vh * scale) / 2;
-    let x = (gr.left - offX) / scale, y = (gr.top - offY) / scale, w = gr.width / scale, h = gr.height / scale;
+    const vr = video.getBoundingClientRect();
+    if (!vw || !vh || !vr.width) return {x: 0, y: 0, w: vw, h: vh};
+    const scale = Math.min(vr.width / vw, vr.height / vh);       // object-fit: contain (영상 전체가 보임)
+    const dw = vw * scale, dh = vh * scale;
+    const ox = vr.left + (vr.width - dw) / 2, oy = vr.top + (vr.height - dh) / 2;
+    const L = Math.max(ox, 0), T = Math.max(oy, 0), R = Math.min(ox + dw, innerWidth), B = Math.min(oy + dh, innerHeight);
+    placeGuide(L, T, R - L, B - T);
+    let x = (L - ox) / scale, y = (T - oy) / scale, w = (R - L) / scale, h = (B - T) / scale;
     if (S.mirror) x = vw - x - w;                                // 전면 카메라 좌우 반전
     x = Math.max(0, x); y = Math.max(0, y);
     w = Math.min(vw - x, w); h = Math.min(vh - y, h);
     return {x, y, w, h};
+  }
+  let lastGuide = '';
+  function placeGuide(l, t, w, h){       // 테두리를 실제로 찍히는 영역에 맞춤
+    const k = [l, t, w, h].map(Math.round).join(',');
+    if (k === lastGuide) return; lastGuide = k;
+    Object.assign(guide.style, {left: Math.round(l) + 'px', top: Math.round(t) + 'px', width: Math.round(w) + 'px', height: Math.round(h) + 'px'});
   }
 
   // ── 장면 분석 (자동 인식) ───────────────────────────
@@ -988,7 +995,7 @@
     if (S.autoKind === 'interval') {     // 시간 간격 모드: N초마다 사진 → 정답 (같은 화면이면 건너뜀)
       const now = Date.now(), ms = S.intervalSec * 1000;
       if (!canAuto) { S.nextShotAt = 0; setRing(0); updateStatus(); return; }
-      if (!S.nextShotAt) S.nextShotAt = now + ms;
+      if (!S.nextShotAt) S.nextShotAt = now + (S.shotOnce ? ms : 1500);   // 카메라를 켜고 첫 촬영은 1.5초 뒤
       const remain = S.nextShotAt - now;
       S.remain = Math.max(0, remain);
       progress = Math.min(1, 1 - S.remain / ms);
@@ -1063,6 +1070,7 @@
     if (S.capturing) return;
     if (S.busy) { if (mode !== 'auto') S.busy.ctl.abort(); else return; }
     let shot = pre;
+    S.shotOnce = true;
     const quiet = mode === 'auto' && S.autoKind === 'interval';   // 시간 간격 모드는 정답만 말함
     if (!quiet) cue('푸는 중');
     if (!shot) {
@@ -1180,7 +1188,7 @@
       headers: {'content-type': 'application/json', 'x-api-key': S.apiKey, 'anthropic-version': '2023-06-01',
                 'anthropic-dangerous-direct-browser-access': 'true'},
       body: JSON.stringify({
-        model: mdl.id, max_tokens: DIRECT.maxTokens[style], system: DIRECT.prompts[style], stream: true,
+        model: mdl.id, max_tokens: DIRECT.maxTokens[style], system: DIRECT.prompts[style], stream: true, ...DIRECT.thinking,
         messages: [{role: 'user', content: [
           {type: 'image', source: {type: 'base64', media_type: 'image/jpeg', data: payload.image.split(',')[1]}},
           {type: 'text', text: userText}]}],
@@ -1373,6 +1381,7 @@
       S.cfg = {models: DIRECT.models.map(({key, label}) => ({key, label})), default: DIRECT.default,
                hasKey: !!S.apiKey, demo: false, noProblemToken: DIRECT.noProblemToken};
     }
+    if (store.get('modelV', 0) < 2) { S.model = S.cfg.default; store.set('model', S.model); store.set('modelV', 2); }   // 실제 시험 결과로 기본 모델 변경
     if (!S.cfg.models.some(m => m.key === S.model)) S.model = S.cfg.default;
     $('#demoBadge').hidden = !S.cfg.demo;
     renderStartNotice();
