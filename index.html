@@ -309,7 +309,7 @@
   <div class="box">
     <h2>풀이 기록 <button data-close aria-label="닫기">✕</button></h2>
     <div id="histList"></div>
-    <div class="help" id="histHelp">최근 50개 풀이는 이 휴대폰에 저장됩니다(사진은 축소본).</div>
+    <div class="help" id="histHelp">풀이 기록은 저장되지 않아요. 앱을 닫거나 새로고침하면 모두 사라져요.</div>
     <button class="chip" id="histClear" style="margin-top:10px">기록 모두 지우기</button>
   </div>
 </div>
@@ -1237,16 +1237,11 @@
   }
   const maskKey = k => k && k.length > 16 ? k.slice(0, 10) + '…' + k.slice(-4) : (k ? '(짧은 키)' : '');
 
-  // ── 기록: 이 휴대폰에 최근 50개 저장 (사진은 축소본) ───────
-  function saveHistory(){
-    const keep = S.history.filter(h => h.done && h.text && !/_\(중지됨\)_$/.test(h.text) && !h.text.trim().startsWith('⚠️')).slice(0, 50).map(h => ({
-      t: h.time.toISOString(), mode: h.mode, model: h.model, style: h.style, src: h.src, text: h.text, thumb: h.thumb, demo: h.demo}));
-    store.set('history', keep);
-  }
+  // ── 기록: 휴대폰에 저장하지 않음. 앱을 켜 둔 동안만 메모리에 있고, 닫거나 새로고침하면 사라짐 ───────
+  function saveHistory(){ /* 저장 안 함 */ }
   function loadHistory(){
-    const arr = store.get('history', []);
-    if (!Array.isArray(arr)) return;
-    S.history = arr.map(h => ({...h, time: new Date(h.t), done: true, spoken: true, image: null}));
+    try { localStorage.removeItem('livesolve.history'); } catch {}   // 예전 버전이 저장해 둔 기록 삭제
+    S.history = [];
   }
 
   $('#shutter').onclick = () => shoot('manual');
@@ -1353,7 +1348,7 @@
   }
   $('#histClear').onclick = () => { S.history = []; store.set('history', []); renderHistory(); toast('기록을 지웠어요'); };
   function renderHistory(){
-    $('#histHelp').textContent = '최근 50개 풀이는 이 휴대폰에 저장됩니다(사진은 축소본).' + (S.backend === 'server' ? ' PC의 solved 폴더에는 원본 사진과 풀이가 함께 저장돼요.' : '');
+    $('#histHelp').textContent = '풀이 기록은 저장되지 않아요. 앱을 닫거나 새로고침하면 모두 사라져요.' + (S.backend === 'server' ? ' PC의 solved 폴더에는 원본 사진과 풀이가 함께 저장돼요.' : '');
     const list = $('#histList');
     if (!S.history.length) { list.innerHTML = '<div class="empty">아직 풀이 기록이 없어요</div>'; return; }
     list.innerHTML = S.history.map((it, i) =>
